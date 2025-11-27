@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import http from "http";
+import teamRoutes from "./team/team.routes.js";
 import { Server as SocketIOServer } from "socket.io";
 
 import { ENV } from "./config/env.js";
@@ -25,6 +26,7 @@ app.use(express.json());
 // ---------- ROUTES ----------
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/teams", teamRoutes);
 
 // ---------- HEALTH ----------
 app.get("/api/health", (req, res) => {
@@ -40,5 +42,5 @@ io.on("connection", (socket) => {
 const PORT = ENV.PORT || 4000;
 
 server.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });

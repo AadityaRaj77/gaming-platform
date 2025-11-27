@@ -7,6 +7,12 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum TeamRole {
+  LEADER
+  MEMBER
+  MODERATOR
+}
+
 enum Gender {
   MALE
   FEMALE
@@ -48,7 +54,6 @@ model User {
   createdTeams    Team[]       @relation("CaptainTeams")
   teamMemberships TeamMember[]
 
-  // relations required by Prisma
   joinRequests TeamJoinRequest[]
   sentMessages TeamMessage[]
 }
@@ -113,14 +118,20 @@ model Achievement {
 }
 
 model Team {
-  id         Int     @id @default(autoincrement())
-  name       String  @unique
-  game       Game
-  tagline    String?
-  region     String?
-  captainId  Int
-  captain    User    @relation("CaptainTeams", fields: [captainId], references: [id])
-  maxMembers Int     @default(5)
+  id Int @id @default(autoincrement())
+
+  name    String  @unique
+  game    Game
+  tagline String?
+  region  String?
+
+  teamCode     String @unique
+  passwordHash String
+
+  leaderId Int
+  leader   User @relation("CaptainTeams", fields: [leaderId], references: [id])
+
+  maxMembers Int @default(5)
 
   members      TeamMember[]
   joinRequests TeamJoinRequest[]
@@ -131,26 +142,36 @@ model Team {
 }
 
 model TeamMember {
-  id         Int      @id @default(autoincrement())
-  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  teamId     Int
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId     Int
-  roleInTeam String?
-  joinedAt   DateTime @default(now())
+  id Int @id @default(autoincrement())
+
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId Int
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+
+  role TeamRole @default(MEMBER)
+
+  joinedAt DateTime @default(now())
 
   @@unique([teamId, userId])
 }
 
 model TeamJoinRequest {
-  id        Int      @id @default(autoincrement())
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  teamId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    Int
-  message   String?  @db.Text
-  status    String   @default("PENDING")
+  id Int @id @default(autoincrement())
+
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId Int
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+
+  message String?
+  status  String  @default("PENDING") // PENDING | ACCEPTED | REJECTED
+
   createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
 }
 
 model TeamMessage {
