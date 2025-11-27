@@ -6,3 +6,159 @@ datasource db {
 generator client {
   provider = "prisma-client-js"
 }
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Game {
+  BGMI
+  FREEFIRE
+  VALORANT
+  CALL_OF_DUTY
+  CSGO
+  CHESS_DOT_COM
+  OTHERS
+}
+
+enum SocialProvider {
+  TWITCH
+  YOUTUBE
+  TWITTER
+  INSTAGRAM
+  DISCORD
+  FACEBOOK
+  OTHER
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  email        String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // profile
+  profile PlayerProfile?
+
+  // teams
+  createdTeams    Team[]       @relation("CaptainTeams")
+  teamMemberships TeamMember[]
+
+  // relations required by Prisma
+  joinRequests TeamJoinRequest[]
+  sentMessages TeamMessage[]
+}
+
+model PlayerProfile {
+  id     Int  @id @default(autoincrement())
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int  @unique
+
+  location          String?
+  gender            Gender?
+  age               Int?
+  about             String? @db.Text
+  hoursPerWeek      Int?
+  lookingForTeam    Boolean @default(false)
+  availabilityStart String?
+  availabilityEnd   String?
+  isProfileComplete Boolean @default(false)
+  visibility        String  @default("PUBLIC")
+
+  games        PlayerGame[]
+  socialLinks  SocialLink[]
+  achievements Achievement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PlayerGame {
+  id             Int           @id @default(autoincrement())
+  profile        PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId      Int
+  game           Game
+  customName     String?
+  playerIdOnGame String?
+  public         Boolean       @default(true)
+
+  @@unique([profileId, game])
+}
+
+model SocialLink {
+  id        Int            @id @default(autoincrement())
+  profile   PlayerProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId Int
+  provider  SocialProvider
+  url       String
+  label     String?
+  createdAt DateTime       @default(now())
+
+  @@unique([profileId, provider, url])
+}
+
+model Achievement {
+  id          Int           @id @default(autoincrement())
+  profile     PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profileId   Int
+  title       String
+  description String?       @db.Text
+  achievedAt  DateTime?
+  proofUrl    String?
+  createdAt   DateTime      @default(now())
+}
+
+model Team {
+  id         Int     @id @default(autoincrement())
+  name       String  @unique
+  game       Game
+  tagline    String?
+  region     String?
+  captainId  Int
+  captain    User    @relation("CaptainTeams", fields: [captainId], references: [id])
+  maxMembers Int     @default(5)
+
+  members      TeamMember[]
+  joinRequests TeamJoinRequest[]
+  messages     TeamMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TeamMember {
+  id         Int      @id @default(autoincrement())
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int
+  roleInTeam String?
+  joinedAt   DateTime @default(now())
+
+  @@unique([teamId, userId])
+}
+
+model TeamJoinRequest {
+  id        Int      @id @default(autoincrement())
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  message   String?  @db.Text
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+}
+
+model TeamMessage {
+  id        Int      @id @default(autoincrement())
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId    Int
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderId  Int
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+}
