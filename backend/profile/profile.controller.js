@@ -6,6 +6,9 @@ export const getMyProfile = async (req, res) => {
     const profile = await prisma.playerProfile.findUnique({
       where: { userId: req.user.userId },
       include: {
+        user: {
+          select: { id: true, username: true }
+        },
         games: true,
         socialLinks: true,
         achievements: true
@@ -14,101 +17,127 @@ export const getMyProfile = async (req, res) => {
 
     res.json(profile);
   } catch (err) {
-    console.error("getMyProfile:", err);
-    res.status(500).json({ message: "Failed to fetch profile" });
+    console.error(err);
+    res.status(500).json({ message: "Failed to load profile" });
   }
 };
 
+
 // PUT /api/profile/me
+// controllers/profile.controller.js (replace upsertProfile)
 export const upsertProfile = async (req, res) => {
   try {
+    const userId = req.user.userId;
     const {
       location,
       gender,
       age,
       about,
-      hoursPerWeek,
-      lookingForTeam,
-      availabilityStart,
-      availabilityEnd,
-      games,         // [{ game, customName?, playerIdOnGame? }]
-      socialLinks,   // [{ provider, url, label? }]
-      achievements   // [{ title, description?, proofUrl? }]
+      games,
+      socialLinks,
+      achievements
     } = req.body;
 
-    // 1. Create or update main profile
+    // 1️⃣ Base profile
     const profile = await prisma.playerProfile.upsert({
-      where: { userId: req.user.userId },
-      update: {
-        location,
-        gender,
-        age,
-        about,
-        hoursPerWeek,
-        lookingForTeam,
-        availabilityStart,
-        availabilityEnd,
-        isProfileComplete: true
-      },
-      create: {
-        userId: req.user.userId,
-        location,
-        gender,
-        age,
-        about,
-        hoursPerWeek,
-        lookingForTeam,
-        availabilityStart,
-        availabilityEnd,
-        isProfileComplete: true
+      where: { userId },
+      update: { location, gender, age, about },
+      create: { userId, location, gender, age, about }
+    });
+
+    const ops = [];
+
+    // 2️⃣ PlayerGame (ENUM SAFE)
+    if (Array.isArray(games)) {
+      ops.push(
+        prisma.playerGame.deleteMany({ where: { profileId: profile.id } })
+      );
+
+      if (games.length) {
+        ops.push(
+          prisma.playerGame.createMany({
+            data: games.map(g => ({
+              profileId: profile.id,
+              game: g.game, // MUST match enum exactly
+              customName: g.customName || null,
+              playerIdOnGame: g.playerIdOnGame || null
+            }))
+          })
+        );
+      }
+    }
+
+    // 3️⃣ Social Links (PROVIDER IS MANDATORY)
+    if (Array.isArray(socialLinks)) {
+      ops.push(
+        prisma.socialLink.deleteMany({ where: { profileId: profile.id } })
+      );
+
+      if (socialLinks.length) {
+        ops.push(
+          prisma.socialLink.createMany({
+            data: socialLinks.map(s => ({
+              profileId: profile.id,
+              provider: s.provider || "OTHER", // ✅ REQUIRED BY SCHEMA
+              url: s.url,
+              label: s.label || null
+            }))
+          })
+        );
+      }
+    }
+
+    // 4️⃣ Achievements (TITLE REQUIRED)
+    if (Array.isArray(achievements)) {
+      ops.push(
+        prisma.achievement.deleteMany({ where: { profileId: profile.id } })
+      );
+
+      if (achievements.length) {
+        ops.push(
+          prisma.achievement.createMany({
+            data: achievements.map(a => ({
+              profileId: profile.id,
+              title: a.title,  // ✅ REQUIRED
+              description: a.description || null,
+              achievedAt: a.achievedAt || null,
+              proofUrl: a.proofUrl || null
+            }))
+          })
+        );
+      }
+    }
+
+    // 5️⃣ Atomic execution
+    if (ops.length) {
+      await prisma.$transaction(ops);
+    }
+
+    // 6️⃣ Return fresh profile
+    const fresh = await prisma.playerProfile.findUnique({
+      where: { id: profile.id },
+      include: {
+        user: { select: { id: true, username: true } },
+        games: true,
+        socialLinks: true,
+        achievements: true
       }
     });
 
-    // 2. Clear old relations
-    await prisma.playerGame.deleteMany({ where: { profileId: profile.id } });
-    await prisma.socialLink.deleteMany({ where: { profileId: profile.id } });
-    await prisma.achievement.deleteMany({ where: { profileId: profile.id } });
+    res.json({ message: "Profile saved successfully", profile: fresh });
 
-    // 3. Re-insert fresh data
-    if (games?.length) {
-      await prisma.playerGame.createMany({
-        data: games.map(g => ({
-          profileId: profile.id,
-          game: g.game,
-          customName: g.customName || null,
-          playerIdOnGame: g.playerIdOnGame || null
-        }))
-      });
-    }
-
-    if (socialLinks?.length) {
-      await prisma.socialLink.createMany({
-        data: socialLinks.map(s => ({
-          profileId: profile.id,
-          provider: s.provider,
-          url: s.url,
-          label: s.label || null
-        }))
-      });
-    }
-
-    if (achievements?.length) {
-      await prisma.achievement.createMany({
-        data: achievements.map(a => ({
-          profileId: profile.id,
-          title: a.title,
-          description: a.description || null,
-          proofUrl: a.proofUrl || null
-        }))
-      });
-    }
-
-    res.json({ message: "Profile saved successfully" });
   } catch (err) {
     console.error("upsertProfile:", err);
-    res.status(500).json({ message: "Failed to save profile" });
+    res.status(500).json({
+      message: "Failed to save profile",
+      error: err.message
+    });
   }
 };
+
+
+
+
 
 
 
@@ -153,7 +182,9 @@ export const searchProfiles = async (req, res) => {
         user: {
           select: { id: true, username: true }
         },
-        games: true
+        games: true,
+       socialLinks: true,
+       achievements: true
       }
     });
 

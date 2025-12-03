@@ -2,10 +2,9 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { prisma } from "../config/db.js";
 
-// utils
 const generateTeamCode = () => crypto.randomBytes(4).toString("hex").toUpperCase();
 
-// ✅ CREATE TEAM (leader auto-added)
+// CREATE TEAM (leader auto-added)
 export const createTeam = async (req, res) => {
   try {
     const { name, game, tagline, region, password, maxMembers } = req.body;
@@ -15,11 +14,14 @@ export const createTeam = async (req, res) => {
     }
 
     const existing = await prisma.team.findUnique({ where: { name } });
-    if (existing) return res.status(400).json({ message: "Team name already exists" });
+    if (existing) {
+      return res.status(400).json({ message: "Team name already exists" });
+    }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const teamCode = generateTeamCode();
 
+    // STEP 1: Create team ONLY
     const team = await prisma.team.create({
       data: {
         name,
@@ -29,29 +31,33 @@ export const createTeam = async (req, res) => {
         teamCode,
         passwordHash,
         leaderId: req.user.userId,
-        maxMembers: maxMembers || 5,
-        members: {
-          create: {
-            userId: req.user.userId,
-            role: "LEADER"
-          }
-        }
+        maxMembers: maxMembers || 5
+      }
+    });
+
+    // STEP 2: FORCE leader into TeamMember table
+    await prisma.teamMember.create({
+      data: {
+        teamId: team.id,
+        userId: req.user.userId,
+        role: "LEADER"
       }
     });
 
     res.status(201).json({
       message: "Team created",
       teamId: team.id,
-      teamCode,
-      passwordShownOnce: password
+      teamCode
     });
   } catch (err) {
     console.error("createTeam:", err);
-    res.status(500).json({ message: "Failed to create team" });
+    res.status(500).json({ message: "Failed to create team", error: err.message });
   }
 };
 
-// ✅ JOIN VIA CODE + PASSWORD (creates PENDING request)
+
+
+// JOIN VIA CODE + PASSWORD (creates PENDING request)
 export const joinViaCode = async (req, res) => {
   try {
     const { teamCode, password, message } = req.body;
@@ -90,7 +96,7 @@ export const joinViaCode = async (req, res) => {
   }
 };
 
-// ✅ TEAM DETAILS WITH ROLES
+// TEAM DETAILS WITH LEADER + MEMBERS
 export const getTeamDetails = async (req, res) => {
   try {
     const teamId = Number(req.params.teamId);
@@ -100,8 +106,13 @@ export const getTeamDetails = async (req, res) => {
       include: {
         members: {
           include: {
-            user: { select: { id: true, username: true } }
+            user: {
+              select: { id: true, username: true }
+            }
           }
+        },
+        leader: {
+          select: { id: true, username: true }
         }
       }
     });
@@ -114,6 +125,8 @@ export const getTeamDetails = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch team" });
   }
 };
+
+
 
 // LIST JOIN REQUESTS (leader only)
 export const listJoinRequests = async (req, res) => {
@@ -215,3 +228,69 @@ export const kickMember = async (req, res) => {
 
   res.json({ message: "Member kicked" });
 };
+
+// USED BY TeamMembers.jsx
+export const getTeamMembersAndRequests = async (req, res) => {
+  try {
+    const teamId = Number(req.params.teamId);
+
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: {
+        members: {
+          include: { user: { select: { id: true, username: true } } }
+        },
+        joinRequests: {
+          where: { status: "PENDING" },
+          include: { user: { select: { id: true, username: true } } }
+        }
+      }
+    });
+
+    if (!team) return res.status(404).json({ message: "Team not found" });
+
+    res.json({
+      members: team.members,
+      requests: team.joinRequests,
+      isLeader: team.leaderId === req.user.userId
+    });
+  } catch (err) {
+    console.error("getTeamMembersAndRequests:", err);
+    res.status(500).json({ message: "Failed to load team members" });
+  }
+};
+
+
+//  Wrapper for frontend compatibility
+export const acceptByRequestId = async (req, res) => {
+  const reqId = Number(req.params.reqId);
+
+  const reqEntry = await prisma.teamJoinRequest.findUnique({
+    where: { id: reqId }
+  });
+
+  if (!reqEntry) return res.status(404).json({ message: "Request not found" });
+
+  req.params.teamId = reqEntry.teamId;
+  req.params.userId = reqEntry.userId;
+
+  return acceptJoin(req, res);
+};
+
+// Reject wrapper
+export const rejectByRequestId = async (req, res) => {
+  const reqId = Number(req.params.reqId);
+
+  const reqEntry = await prisma.teamJoinRequest.findUnique({
+    where: { id: reqId }
+  });
+
+  if (!reqEntry) return res.status(404).json({ message: "Request not found" });
+
+  req.params.teamId = reqEntry.teamId;
+  req.params.userId = reqEntry.userId;
+
+  return rejectJoin(req, res);
+};
+
+

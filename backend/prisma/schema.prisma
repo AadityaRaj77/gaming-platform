@@ -182,4 +182,6 @@ model TeamMessage {
   senderId  Int
   content   String   @db.Text
   createdAt DateTime @default(now())
+
+  @@index([teamId, createdAt])
 }
