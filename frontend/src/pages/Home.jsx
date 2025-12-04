@@ -169,29 +169,34 @@ export default function Home() {
   // teams 
   const createTeam = async () => {
     if (!teamName || !teamPassword) {
-      alert("Fill all fields");
+      alert("Team name & password required");
       return;
     }
   
     try {
-      const { data } = await API.post("/teams/create", {
+      const payload = {
         name: teamName,
-        game: "VALORANT",
+        game: "VALORANT",       
         password: teamPassword
-      });
+      };
   
-      alert(`Team Code: ${data.teamCode}`);
+      console.log("▶️ createTeam payload:", payload);
+  
+      const { data } = await API.post("/teams/create", payload);
+  
+      console.log("createTeam response:", data);
+  
+      alert(`Team created!\nCode: ${data.teamCode}`);
       nav(`/teams/${data.teamId}`);
     } catch (err) {
-      console.error("CREATE TEAM ERROR FULL:", err);
-      console.error("BACKEND RESPONSE:", err?.response?.data);
-      alert(
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        "Create team failed (no backend message)"
-      );
+      console.error("createTeam error:", err);
+      console.error("createTeam response data:", err?.response?.data);
+  
+      alert(err?.response?.data?.message || "Create team failed");
     }
   };
+  
+  
   
   const joinTeam = async () => {
     if (!joinCode || !joinPassword) {

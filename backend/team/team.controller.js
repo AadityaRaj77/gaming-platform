@@ -1,13 +1,16 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { prisma } from "../config/db.js";
+import { emitToUser } from "../socketBus.js";
+import { emitToTeam } from "../socketBus.js";
+
 
 const generateTeamCode = () => crypto.randomBytes(4).toString("hex").toUpperCase();
 
 // CREATE TEAM (leader auto-added)
 export const createTeam = async (req, res) => {
   try {
-    const { name, game, tagline, region, password, maxMembers } = req.body;
+    const { name, game, password, tagline, region, maxMembers } = req.body;
 
     if (!name || !game || !password) {
       return res.status(400).json({ message: "name, game, password required" });
@@ -19,28 +22,24 @@ export const createTeam = async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const teamCode = generateTeamCode();
+    const teamCode = crypto.randomBytes(4).toString("hex").toUpperCase();
 
-    // STEP 1: Create team ONLY
     const team = await prisma.team.create({
       data: {
         name,
         game,
-        tagline,
-        region,
+        tagline: tagline || null,
+        region: region || null,
         teamCode,
         passwordHash,
         leaderId: req.user.userId,
-        maxMembers: maxMembers || 5
-      }
-    });
-
-    // STEP 2: FORCE leader into TeamMember table
-    await prisma.teamMember.create({
-      data: {
-        teamId: team.id,
-        userId: req.user.userId,
-        role: "LEADER"
+        maxMembers: maxMembers || 5,
+        members: {
+          create: {
+            userId: req.user.userId,
+            role: "LEADER"
+          }
+        }
       }
     });
 
@@ -54,7 +53,6 @@ export const createTeam = async (req, res) => {
     res.status(500).json({ message: "Failed to create team", error: err.message });
   }
 };
-
 
 
 // JOIN VIA CODE + PASSWORD (creates PENDING request)
@@ -179,12 +177,18 @@ export const acceptJoin = async (req, res) => {
       })
     ]);
 
+    //realtime notify the accepted user
+    emitToUser(Number(userId), "joinAccepted", {
+      teamId: Number(teamId)
+    });
+
     res.json({ message: "User added to team" });
   } catch (err) {
     console.error("acceptJoin:", err);
     res.status(500).json({ message: "Accept failed" });
   }
 };
+
 
 // REJECT JOIN
 export const rejectJoin = async (req, res) => {
@@ -215,19 +219,50 @@ export const changeRole = async (req, res) => {
 };
 
 // KICK MEMBER (leader only)
+// KICK MEMBER (leader only) — REALTIME VERSION
 export const kickMember = async (req, res) => {
-  const { teamId, userId } = req.params;
+  try {
+    const { teamId, userId } = req.params;
+    const teamIdNum = Number(teamId);
+    const userIdNum = Number(userId);
 
-  const team = await prisma.team.findUnique({ where: { id: Number(teamId) } });
-  if (team.leaderId !== req.user.userId)
-    return res.status(403).json({ message: "Leader only" });
+    const team = await prisma.team.findUnique({
+      where: { id: teamIdNum }
+    });
 
-  await prisma.teamMember.delete({
-    where: { teamId_userId: { teamId: Number(teamId), userId: Number(userId) } }
-  });
+    if (!team) return res.status(404).json({ message: "Team not found" });
 
-  res.json({ message: "Member kicked" });
+    if (team.leaderId !== req.user.userId)
+      return res.status(403).json({ message: "Leader only" });
+
+    // Delete member
+    await prisma.teamMember.delete({
+      where: {
+        teamId_userId: {
+          teamId: teamIdNum,
+          userId: userIdNum
+        }
+      }
+    });
+
+    // REALTIME EMIT TO KICKED USER
+    const room = `team:${teamIdNum}`;
+    req.io.to(room).emit("memberKicked", {
+      teamId: teamIdNum,
+      userId: userIdNum
+    });
+
+    // ALSO UPDATE OTHER MEMBERS
+    req.io.to(room).emit("teamUpdated", { teamId: teamIdNum });
+
+    res.json({ message: "Member kicked realtime" });
+  } catch (err) {
+    console.error("kickMember:", err);
+    res.status(500).json({ message: "Kick failed" });
+  }
 };
+
+
 
 // USED BY TeamMembers.jsx
 export const getTeamMembersAndRequests = async (req, res) => {
@@ -292,5 +327,118 @@ export const rejectByRequestId = async (req, res) => {
 
   return rejectJoin(req, res);
 };
+
+// POST /api/teams/:teamId/leave
+// POST /api/teams/:teamId/leave
+export const leaveTeam = async (req, res) => {
+  try {
+    const teamId = Number(req.params.teamId);
+    const userId = Number(req.user.userId);
+    const { newLeaderId } = req.body || {};
+
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: {
+        members: true
+      }
+    });
+
+    if (!team) {
+      return res.status(404).json({ message: "Team not found" });
+    }
+
+    const isLeader = team.leaderId === userId;
+    const totalMembers = team.members.length;
+
+    // CASE 1: ONLY ONE MEMBER (LEADER) → DISBAND TEAM
+    if (isLeader && totalMembers === 1) {
+      await prisma.team.delete({
+        where: { id: teamId }
+      });
+
+      return res.json({
+        message: "Team disbanded successfully"
+      });
+    }
+
+    // CASE 2: LEADER WITH OTHER MEMBERS → TRANSFER & LEAVE
+    if (isLeader && totalMembers > 1) {
+      if (!newLeaderId) {
+        return res.status(400).json({
+          message: "newLeaderId is required when leader leaves"
+        });
+      }
+
+      const newLeaderNumeric = Number(newLeaderId);
+
+      if (newLeaderNumeric === userId) {
+        return res.status(400).json({
+          message: "You cannot assign yourself as new leader"
+        });
+      }
+
+      const validNewLeader = team.members.find(
+        m => m.userId === newLeaderNumeric
+      );
+
+      if (!validNewLeader) {
+        return res.status(400).json({
+          message: "Selected new leader is not a member"
+        });
+      }
+
+      await prisma.$transaction([
+        prisma.team.update({
+          where: { id: teamId },
+          data: { leaderId: newLeaderNumeric }
+        }),
+
+        prisma.teamMember.update({
+          where: {
+            teamId_userId: {
+              teamId,
+              userId: newLeaderNumeric
+            }
+          },
+          data: { role: "LEADER" }
+        }),
+
+        prisma.teamMember.delete({
+          where: {
+            teamId_userId: {
+              teamId,
+              userId
+            }
+          }
+        })
+      ]);
+
+      return res.json({
+        message: "Leader transferred and you left the team"
+      });
+    }
+
+    // CASE 3: NORMAL MEMBER LEAVING
+    await prisma.teamMember.delete({
+      where: {
+        teamId_userId: {
+          teamId,
+          userId
+        }
+      }
+    });
+
+    return res.json({
+      message: "Left team successfully"
+    });
+  } catch (err) {
+    console.error("leaveTeam:", err);
+    return res.status(500).json({
+      message: "Failed to leave team",
+      error: err.message
+    });
+  }
+};
+
 
 

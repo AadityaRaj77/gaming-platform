@@ -35,7 +35,24 @@ export default function TeamChat({ teamId }) {
 
     s.on("error", (err) => {
       console.error("socket error:", err);
+    
+      if (err?.message === "Not a member of this team") {
+        alert("You were removed from the team");
+        localStorage.removeItem("activeTeam");
+        window.location.replace("/"); 
+      }
     });
+    s.on("memberKicked", ({ teamId: kickedTeamId, userId }) => {
+      const token = localStorage.getItem("token");
+      const myId = Number(JSON.parse(atob(token.split(".")[1])).userId);
+    
+      if (userId === myId && Number(teamId) === Number(kickedTeamId)) {
+        alert("You were kicked from the team");
+        window.location.replace("/");
+      }
+    });
+    
+    
 
     setSocket(s);
     return () => s.disconnect();

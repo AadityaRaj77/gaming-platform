@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import Home from "./pages/Home";
 import TeamPage from "./pages/TeamPage";
 import PlayerProfile from "./pages/PlayerProfile";
+import NotificationsSocket from "./NotificationsSocket";
 
 const isAuth = () => !!localStorage.getItem("token");
 
@@ -13,27 +14,35 @@ const PrivateRoute = ({ children }) => {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/register" element={<Register />} />
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/"
-        element={
-          <PrivateRoute>
-            <Home />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/teams/:teamId"
-        element={
-          <PrivateRoute>
-            <TeamPage />
-          </PrivateRoute>
-        }
-      />
-      <Route path="/:username" element={<PlayerProfile />} />
-    </Routes>
-    
+    <>
+      {/* ✅ Global socket must be OUTSIDE <Routes> */}
+      <NotificationsSocket />
+
+      <Routes>
+        <Route path="/register" element={<Register />} />
+        <Route path="/login" element={<Login />} />
+
+        <Route
+          path="/"
+          element={
+            <PrivateRoute>
+              <Home />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/teams/:teamId"
+          element={
+            <PrivateRoute>
+              <TeamPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* public player profile */}
+        <Route path="/:username" element={<PlayerProfile />} />
+      </Routes>
+    </>
   );
 }

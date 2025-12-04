@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
+import { registerTeamChatNamespace } from "./socketBus.js";
 import jwt from "jsonwebtoken";
 
 import { ENV } from "./config/env.js";
@@ -20,6 +21,11 @@ const io = new SocketIOServer(server, {
     methods: ["GET", "POST", "PUT", "DELETE"]
   }
 });
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 
 app.use(cors());
 app.use(express.json());
@@ -37,6 +43,8 @@ app.get("/api/health", (req, res) => {
 // TEAM CHAT (Socket.IO)
 
 const teamChatNsp = io.of("/team-chat");
+registerTeamChatNamespace(teamChatNsp);
+
 
 // Auth middleware for sockets
 teamChatNsp.use((socket, next) => {
@@ -76,6 +84,7 @@ const isMemberOfTeam = async (teamId, userId) => {
 
 teamChatNsp.on("connection", (socket) => {
   console.log("team-chat connected:", socket.id, "user:", socket.userId);
+  socket.join(`user:${socket.userId}`);
 
   // JOIN TEAM ROOM
   socket.on("joinTeam", async ({ teamId }) => {
