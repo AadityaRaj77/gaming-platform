@@ -9,7 +9,8 @@ export default function Home() {
   const [username, setUsername] = useState("Loading...");
 
   const [search, setSearch] = useState("");
-  const [results, setResults] = useState([]);
+const [results, setResults] = useState([]);
+const [searchLoading, setSearchLoading] = useState(false);
 
   const [teamName, setTeamName] = useState("");
   const [teamPassword, setTeamPassword] = useState("");
@@ -165,6 +166,28 @@ export default function Home() {
       alert("Search failed");
     }
   };
+  useEffect(() => {
+    if (!search.trim()) {
+      setResults([]);
+      return;
+    }
+  
+    const delay = setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        const { data } = await API.get(
+          `/profile/search?username=${encodeURIComponent(search)}`
+        );
+        setResults(data);
+      } catch (err) {
+        console.error("live search failed:", err);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 400); // ✅ debounce time (ms)
+  
+    return () => clearTimeout(delay);
+  }, [search]);
 
   // teams 
   const createTeam = async () => {
@@ -180,7 +203,7 @@ export default function Home() {
         password: teamPassword
       };
   
-      console.log("▶️ createTeam payload:", payload);
+      console.log("createTeam payload:", payload);
   
       const { data } = await API.post("/teams/create", payload);
   
@@ -265,8 +288,17 @@ export default function Home() {
         {/* SEARCH */}
         <div className="col-span-4 bg-[#0f0f1a]/90 p-5 rounded-2xl">
           <h2 className="text-lg mb-3">Search Players</h2>
-          <input className="w-full p-2 bg-black border rounded mb-2" onChange={e => setSearch(e.target.value)} />
-          <button onClick={searchProfiles} className="w-full bg-red-600 p-2 rounded">Search</button>
+          <input
+  className="w-full p-2 bg-black border rounded mb-2"
+  value={search}
+  onChange={(e) => setSearch(e.target.value)}
+  placeholder="Search by username..."
+/>
+
+{searchLoading && (
+  <div className="text-xs text-gray-400">Searching...</div>
+)}
+
 
           <div className="mt-3 space-y-2">
   {results.map(r => (

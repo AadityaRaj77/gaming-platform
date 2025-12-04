@@ -24,7 +24,6 @@ export const getMyProfile = async (req, res) => {
 
 
 // PUT /api/profile/me
-// controllers/profile.controller.js (replace upsertProfile)
 export const upsertProfile = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -38,7 +37,7 @@ export const upsertProfile = async (req, res) => {
       achievements
     } = req.body;
 
-    // 1️⃣ Base profile
+    // Base profile
     const profile = await prisma.playerProfile.upsert({
       where: { userId },
       update: { location, gender, age, about },
@@ -47,7 +46,7 @@ export const upsertProfile = async (req, res) => {
 
     const ops = [];
 
-    // 2️⃣ PlayerGame (ENUM SAFE)
+    //  PlayerGame (ENUM SAFE)
     if (Array.isArray(games)) {
       ops.push(
         prisma.playerGame.deleteMany({ where: { profileId: profile.id } })
@@ -67,7 +66,7 @@ export const upsertProfile = async (req, res) => {
       }
     }
 
-    // 3️⃣ Social Links (PROVIDER IS MANDATORY)
+    // Social Links (PROVIDER IS MANDATORY)
     if (Array.isArray(socialLinks)) {
       ops.push(
         prisma.socialLink.deleteMany({ where: { profileId: profile.id } })
@@ -87,7 +86,7 @@ export const upsertProfile = async (req, res) => {
       }
     }
 
-    // 4️⃣ Achievements (TITLE REQUIRED)
+    //  Achievements (TITLE REQUIRED)
     if (Array.isArray(achievements)) {
       ops.push(
         prisma.achievement.deleteMany({ where: { profileId: profile.id } })
@@ -108,12 +107,12 @@ export const upsertProfile = async (req, res) => {
       }
     }
 
-    // 5️⃣ Atomic execution
+    //  Atomic execution
     if (ops.length) {
       await prisma.$transaction(ops);
     }
 
-    // 6️⃣ Return fresh profile
+    // Return fresh profile
     const fresh = await prisma.playerProfile.findUnique({
       where: { id: profile.id },
       include: {
