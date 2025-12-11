@@ -9,11 +9,21 @@ export const getMyProfile = async (req, res) => {
         user: {
           select: { id: true, username: true }
         },
-        games: true,
-        socialLinks: true,
-        achievements: true
+        //games: true,
+        //socialLinks: true,
+        //achievements: true
       }
     });
+    if (!profile) {
+      profile = await prisma.playerProfile.create({
+        data: {
+          userId: req.user.userId
+        },
+        include: {
+          user: { select: { id: true, username: true } }
+        }
+      });
+    }
 
     res.json(profile);
   } catch (err) {
@@ -77,7 +87,7 @@ export const upsertProfile = async (req, res) => {
           prisma.socialLink.createMany({
             data: socialLinks.map(s => ({
               profileId: profile.id,
-              provider: s.provider || "OTHER", // ✅ REQUIRED BY SCHEMA
+              provider: s.provider || "OTHER", 
               url: s.url,
               label: s.label || null
             }))
