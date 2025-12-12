@@ -39,6 +39,23 @@ enum SocialProvider {
   OTHER
 }
 
+enum VenueType {
+  ONLINE
+  OFFLINE
+}
+
+enum TournamentStatus {
+  DRAFT
+  PUBLISHED
+  COMPLETED
+  CANCELLED
+}
+
+enum FeeType {
+  FREE
+  PAID
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
@@ -56,6 +73,12 @@ model User {
 
   joinRequests TeamJoinRequest[]
   sentMessages TeamMessage[]
+
+  // Tournament relations
+  createdTournaments     Tournament[]            @relation("UserCreatedTournaments")
+  organizerIn            TournamentOrganizer[]
+  tournamentJoinRequests TournamentJoinRequest[]
+  tournamentParticipants TournamentParticipant[]
 }
 
 model PlayerProfile {
@@ -184,4 +207,81 @@ model TeamMessage {
   createdAt DateTime @default(now())
 
   @@index([teamId, createdAt])
+}
+
+model Tournament {
+  id        Int       @id @default(autoincrement())
+  name      String
+  tagline   String?
+  bannerUrl String?
+  venueType VenueType
+  location  String?
+  startDate DateTime
+  endDate   DateTime
+
+  createdBy Int
+  creator   User @relation("UserCreatedTournaments", fields: [createdBy], references: [id])
+
+  status TournamentStatus @default(PUBLISHED)
+
+  feeType   FeeType
+  feeAmount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  games        TournamentGame[]
+  requirements TournamentRequirement[]
+  organizers   TournamentOrganizer[]
+  participants TournamentParticipant[]
+  joinRequests TournamentJoinRequest[]
+}
+
+model TournamentGame {
+  id           Int        @id @default(autoincrement())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournamentId Int
+  game         Game
+}
+
+model TournamentRequirement {
+  id           Int        @id @default(autoincrement())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournamentId Int
+  text         String
+}
+
+model TournamentOrganizer {
+  id Int @id @default(autoincrement())
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournamentId Int
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+}
+
+model TournamentJoinRequest {
+  id           Int        @id @default(autoincrement())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournamentId Int
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+
+  message   String?
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+}
+
+model TournamentParticipant {
+  id Int @id @default(autoincrement())
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournamentId Int
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId Int
+
+  joinedAt DateTime @default(now())
 }

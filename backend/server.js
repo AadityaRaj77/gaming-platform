@@ -11,6 +11,7 @@ import { prisma } from "./config/db.js";
 import authRoutes from "./auth/auth.routes.js";
 import profileRoutes from "./profile/profile.route.js";
 import teamRoutes from "./team/team.routes.js";
+import tournamentRoutes from "./tournament/tournament.routes.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -34,6 +35,7 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/teams", teamRoutes);
+app.use("/api/tournaments", tournamentRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({ ok: true });

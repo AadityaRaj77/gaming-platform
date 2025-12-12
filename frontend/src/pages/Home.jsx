@@ -351,6 +351,12 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            <button
+              onClick={() => nav("/tournaments/create")}
+              className="w-full py-3 bg-purple-700 rounded-lg text-white mt-4">
+               Organize Tournament
+            </button>
+
           </div>
 
           {/* RIGHT: SQUAD OPERATIONS (5 Cols) */}
