@@ -1,6 +1,6 @@
 import { prisma } from "../db/prisma.js";
 
-/* ================= GET MY PROFILE ================= */
+// GET MY PROFILE
 
 export const getMyProfile = async (req, res) => {
   try {
@@ -28,7 +28,7 @@ export const getMyProfile = async (req, res) => {
   }
 };
 
-/* ================= UPSERT PROFILE ================= */
+// UPSERT PROFILE
 
 export const upsertProfile = async (req, res) => {
   try {
@@ -146,7 +146,7 @@ export const upsertProfile = async (req, res) => {
   }
 };
 
-/* ================= SEARCH PROFILES ================= */
+// SEARCH PROFILES
 
 export const searchProfiles = async (req, res) => {
   try {
@@ -195,7 +195,7 @@ export const searchProfiles = async (req, res) => {
   }
 };
 
-/* ================= PUBLIC PROFILE ================= */
+// PUBLIC PROFILE
 
 export const getPublicProfile = async (req, res) => {
   try {
