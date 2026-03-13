@@ -353,8 +353,13 @@ export default function Home() {
             </div>
             <button
               onClick={() => nav("/tournaments/create")}
-              className="w-full py-3 bg-purple-700 rounded-lg text-white mt-4">
+              className="w-full py-3 bg-purple-700 rounded-lg text-white mt-4 cursor-pointer">
                Organize Tournament
+            </button>
+            <button
+              onClick={() => nav("/tournaments/list")}
+              className="w-full py-3 bg-purple-700 rounded-lg text-white mt-4 cursor-pointer">
+               Join Tournament
             </button>
 
           </div>

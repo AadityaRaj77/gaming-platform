@@ -1,30 +1,26 @@
 import { prisma } from "../config/db.js";
 
-// GET /api/profile/me
+/* ================= GET MY PROFILE ================= */
+
 export const getMyProfile = async (req, res) => {
   try {
-    const profile = await prisma.playerProfile.findUnique({
+    let profile = await prisma.playerProfile.findUnique({
       where: { userId: req.user.userId },
       include: {
-        user: {
-          select: { id: true, username: true }
-        },
-        //games: true,
-        //socialLinks: true,
-        //achievements: true
+        user: { select: { id: true, username: true } },
+        games: { include: { game: true } },
+        socialLinks: true,
+        achievements: true
       }
     });
     if (!profile) {
       profile = await prisma.playerProfile.create({
-        data: {
-          userId: req.user.userId
-        },
+        data: { userId: req.user.userId },
         include: {
           user: { select: { id: true, username: true } }
         }
       });
     }
-
     res.json(profile);
   } catch (err) {
     console.error(err);
@@ -32,8 +28,8 @@ export const getMyProfile = async (req, res) => {
   }
 };
 
+/* ================= UPSERT PROFILE ================= */
 
-// PUT /api/profile/me
 export const upsertProfile = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -47,7 +43,6 @@ export const upsertProfile = async (req, res) => {
       achievements
     } = req.body;
 
-    // Base profile
     const profile = await prisma.playerProfile.upsert({
       where: { userId },
       update: { location, gender, age, about },
@@ -56,10 +51,12 @@ export const upsertProfile = async (req, res) => {
 
     const ops = [];
 
-    //  PlayerGame (ENUM SAFE)
+    /* ===== PLAYER GAMES ===== */
     if (Array.isArray(games)) {
       ops.push(
-        prisma.playerGame.deleteMany({ where: { profileId: profile.id } })
+        prisma.playerGame.deleteMany({
+          where: { profileId: profile.id }
+        })
       );
 
       if (games.length) {
@@ -67,19 +64,21 @@ export const upsertProfile = async (req, res) => {
           prisma.playerGame.createMany({
             data: games.map(g => ({
               profileId: profile.id,
-              game: g.game, // MUST match enum exactly
-              customName: g.customName || null,
-              playerIdOnGame: g.playerIdOnGame || null
+              gameId: g.gameId,            // ✅ REQUIRED
+              playerTag: g.playerTag || null,
+              isPublic: true
             }))
           })
         );
       }
     }
 
-    // Social Links (PROVIDER IS MANDATORY)
+    /* ===== SOCIAL LINKS ===== */
     if (Array.isArray(socialLinks)) {
       ops.push(
-        prisma.socialLink.deleteMany({ where: { profileId: profile.id } })
+        prisma.socialLink.deleteMany({
+          where: { profileId: profile.id }
+        })
       );
 
       if (socialLinks.length) {
@@ -87,7 +86,7 @@ export const upsertProfile = async (req, res) => {
           prisma.socialLink.createMany({
             data: socialLinks.map(s => ({
               profileId: profile.id,
-              provider: s.provider || "OTHER", 
+              provider: s.provider || "OTHER",
               url: s.url,
               label: s.label || null
             }))
@@ -96,10 +95,12 @@ export const upsertProfile = async (req, res) => {
       }
     }
 
-    //  Achievements (TITLE REQUIRED)
+    /* ===== ACHIEVEMENTS ===== */
     if (Array.isArray(achievements)) {
       ops.push(
-        prisma.achievement.deleteMany({ where: { profileId: profile.id } })
+        prisma.achievement.deleteMany({
+          where: { profileId: profile.id }
+        })
       );
 
       if (achievements.length) {
@@ -107,7 +108,7 @@ export const upsertProfile = async (req, res) => {
           prisma.achievement.createMany({
             data: achievements.map(a => ({
               profileId: profile.id,
-              title: a.title,  // ✅ REQUIRED
+              title: a.title,
               description: a.description || null,
               achievedAt: a.achievedAt || null,
               proofUrl: a.proofUrl || null
@@ -117,23 +118,24 @@ export const upsertProfile = async (req, res) => {
       }
     }
 
-    //  Atomic execution
     if (ops.length) {
       await prisma.$transaction(ops);
     }
 
-    // Return fresh profile
     const fresh = await prisma.playerProfile.findUnique({
       where: { id: profile.id },
       include: {
         user: { select: { id: true, username: true } },
-        games: true,
+        games: { include: { game: true } },   // 🔑 IMPORTANT
         socialLinks: true,
         achievements: true
       }
     });
 
-    res.json({ message: "Profile saved successfully", profile: fresh });
+    res.json({
+      message: "Profile saved successfully",
+      profile: fresh
+    });
 
   } catch (err) {
     console.error("upsertProfile:", err);
@@ -144,16 +146,11 @@ export const upsertProfile = async (req, res) => {
   }
 };
 
+/* ================= SEARCH PROFILES ================= */
 
-
-
-
-
-
-// GET /api/profile/search?username=adi&game=VALORANT&location=Roorkee
 export const searchProfiles = async (req, res) => {
   try {
-    const { game, location, gender, lookingForTeam, username } = req.query;
+    const { gameId, location, gender, lookingForTeam, username } = req.query;
 
     const whereProfile = {};
 
@@ -169,18 +166,14 @@ export const searchProfiles = async (req, res) => {
       whereProfile.lookingForTeam = lookingForTeam === "true";
     }
 
-    const whereGame = game
-      ? {
-          some: {
-            game: game
-          }
-        }
-      : undefined;
-
     const profiles = await prisma.playerProfile.findMany({
       where: {
         ...whereProfile,
-        games: whereGame,
+        games: gameId
+          ? {
+              some: { gameId: Number(gameId) }
+            }
+          : undefined,
         user: username
           ? {
               username: { contains: username, mode: "insensitive" }
@@ -188,12 +181,10 @@ export const searchProfiles = async (req, res) => {
           : undefined
       },
       include: {
-        user: {
-          select: { id: true, username: true }
-        },
-        games: true,
-       socialLinks: true,
-       achievements: true
+        user: { select: { id: true, username: true } },
+        games: { include: { game: true } },
+        socialLinks: true,
+        achievements: true
       }
     });
 
@@ -203,7 +194,9 @@ export const searchProfiles = async (req, res) => {
     res.status(500).json({ message: "Failed to search profiles" });
   }
 };
-// GET /api/profile/public/:userId
+
+/* ================= PUBLIC PROFILE ================= */
+
 export const getPublicProfile = async (req, res) => {
   try {
     const userId = Number(req.params.userId);
@@ -214,10 +207,8 @@ export const getPublicProfile = async (req, res) => {
     const profile = await prisma.playerProfile.findUnique({
       where: { userId },
       include: {
-        user: {
-          select: { id: true, username: true }
-        },
-        games: true,
+        user: { select: { id: true, username: true } },
+        games: { include: { game: true } },
         socialLinks: true,
         achievements: true
       }

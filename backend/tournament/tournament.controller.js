@@ -1,4 +1,5 @@
 import { prisma } from "../config/db.js";
+import crypto from "crypto";
 
 export const createTournament = async (req, res) => {
   try {
@@ -31,6 +32,7 @@ export const createTournament = async (req, res) => {
         feeType,
         feeAmount: feeType === "PAID" ? Number(feeAmount) : null,
         bannerUrl,
+        status: "DRAFT",
 
         games: {
           create: games.map((g) => ({ game: g })),
@@ -175,5 +177,190 @@ export const addRoom = async (req, res) => {
   } catch (err) {
     console.error("addRoom:", err);
     res.status(500).json({ message: "Room create failed" });
+  }
+};
+
+/**
+ * Helper: only the creator can edit/publish in this MVP.
+ * If you want organizers to be allowed, change logic to check tournament.organizers
+ */
+
+// PUT /api/tournaments/:id/form
+export const saveRegistrationForm = async (req, res) => {
+  try {
+    const tournamentId = Number(req.params.id);
+    const userId = req.user.userId;
+    const { fields } = req.body; 
+    // fields = [{ label, fieldType, required, allowMultiple, defaultValue, paymentMeta }]
+
+    const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
+    if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+    if (tournament.createdBy !== userId)
+      return res.status(403).json({ message: "Only creator can edit form" });
+
+    // clear old form
+    await prisma.tournamentFormField.deleteMany({
+      where: { tournamentId }
+    });
+
+    // insert new form
+    await prisma.tournamentFormField.createMany({
+      data: fields.map(f => ({
+        tournamentId,
+        label: f.label,
+        fieldType: f.fieldType,
+        required: f.required ?? true,
+        allowMultiple: f.allowMultiple ?? false,
+        defaultValue: f.defaultValue ?? null,
+        paymentMeta: f.paymentMeta ?? null
+      }))
+    });
+
+    res.json({ message: "Form saved" });
+  } catch (err) {
+    console.error("saveRegistrationForm:", err);
+    res.status(500).json({ message: "Failed to save form" });
+  }
+};
+
+// POST /api/tournaments/:id/publish
+export const publishTournament = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const userId = req.user.userId;
+
+    const t = await prisma.tournament.findUnique({
+      where: { id },
+      include: { formFields: true }
+    });
+
+    if (!t) return res.status(404).json({ message: "Tournament not found" });
+    if (t.createdBy !== userId)
+      return res.status(403).json({ message: "Only creator can publish" });
+
+    if (t.formFields.length === 0)
+      return res.status(400).json({ message: "Create registration form first" });
+
+    const slug = crypto.randomBytes(3).toString("hex");
+
+    await prisma.tournament.update({
+      where: { id },
+      data: {
+        isHosted: true,
+        shareSlug: slug,
+        status: "LIVE"
+      }
+    });
+
+    res.json({ message: "Tournament hosted", shareSlug: slug });
+  } catch (err) {
+    console.error("publishTournament:", err);
+    res.status(500).json({ message: "Publish failed" });
+  }
+};
+
+// POST /api/tournaments/:id/unpublish
+export const unpublishTournament = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const userId = req.user.userId;
+
+    const t = await prisma.tournament.findUnique({ where: { id } });
+    if (!t) return res.status(404).json({ message: "Tournament not found" });
+    if (t.createdBy !== userId)
+      return res.status(403).json({ message: "Only creator can unpublish" });
+
+    await prisma.tournament.update({
+      where: { id },
+      data: {
+        isHosted: false,
+        shareSlug: null,
+        status: "DRAFT"
+      }
+    });
+
+    res.json({ message: "Tournament unlisted" });
+  } catch (err) {
+    console.error("unpublishTournament:", err);
+    res.status(500).json({ message: "Unpublish failed" });
+  }
+};
+
+// GET /api/tournaments/list
+export const listPublicTournaments = async (req, res) => {
+  try {
+    const rows = await prisma.tournament.findMany({
+      where: { isHosted: true },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        games: true,
+        requirements: true
+      }
+    });
+    res.json(rows);
+  } catch (err) {
+    console.error("listPublicTournaments:", err);
+    res.status(500).json({ message: "List failed" });
+  }
+};
+
+// GET /api/tournaments/:id/register/:slug
+export const getTournamentForRegistration = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const slug = req.params.slug;
+
+    const t = await prisma.tournament.findUnique({ where: { id } });
+    if (!t || !t.isHosted || t.shareSlug !== slug) return res.status(404).json({ message: "Registration not available" });
+
+    res.json({
+      id: t.id,
+      name: t.name,
+      tagline: t.tagline,
+      bannerUrl: t.bannerUrl,
+      registrationForm: t.registrationForm,
+      feeType: t.feeType,
+      feeAmount: t.feeAmount
+    });
+  } catch (err) {
+    console.error("getTournamentForRegistration:", err);
+    res.status(500).json({ message: "Failed" });
+  }
+};
+
+// POST /api/tournaments/:id/register
+export const registerForTournament = async (req, res) => {
+  try {
+    const tournamentId = Number(req.params.id);
+    const userId = req.user.userId;
+    const { responses, paymentInfo } = req.body;
+
+    const t = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      include: { formFields: true }
+    });
+
+    if (!t || !t.isHosted)
+      return res.status(400).json({ message: "Tournament not accepting registrations" });
+
+    for (const f of t.formFields) {
+      if (f.required && (responses[f.label] === undefined || responses[f.label] === "")) {
+        return res.status(400).json({ message: `${f.label} is required` });
+      }
+    }
+
+    await prisma.tournamentRegistration.create({
+      data: {
+        tournamentId,
+        userId,
+        responses,
+        paymentInfo: paymentInfo ?? null
+      }
+    });
+
+    res.json({ message: "Registered successfully" });
+  } catch (err) {
+    console.error("registerForTournament:", err);
+    res.status(500).json({ message: "Registration failed" });
   }
 };

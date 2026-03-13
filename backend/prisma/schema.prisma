@@ -7,6 +7,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
+
 enum TeamRole {
   LEADER
   MEMBER
@@ -17,16 +18,6 @@ enum Gender {
   MALE
   FEMALE
   OTHER
-}
-
-enum Game {
-  BGMI
-  FREEFIRE
-  VALORANT
-  CALL_OF_DUTY
-  CSGO
-  CHESS_DOT_COM
-  OTHERS
 }
 
 enum SocialProvider {
@@ -56,35 +47,66 @@ enum FeeType {
   PAID
 }
 
+enum FormFieldType {
+  TEXT
+  NUMBER
+  ALPHABET
+  CHARACTER
+  MULTI_SELECT
+  PAYMENT
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+
+model Game {
+  id        Int     @id @default(autoincrement())
+  slug      String  @unique   // "valorant", "tekken-7", "smash-karts"
+  name      String           // Display name
+  iconUrl  String?
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  teams                 Team[]
+  tournamentGames       TournamentGame[]
+  registrations         TournamentRegistration[]
+  playerGames           PlayerGame[]
+}
+
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
   passwordHash String
   email        String?  @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
-  // profile
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   profile PlayerProfile?
 
-  // teams
   createdTeams    Team[]       @relation("CaptainTeams")
   teamMemberships TeamMember[]
+  teamJoinRequests TeamJoinRequest[]
+  sentMessages    TeamMessage[]
 
-  joinRequests TeamJoinRequest[]
-  sentMessages TeamMessage[]
-
-  // Tournament relations
-  createdTournaments     Tournament[]            @relation("UserCreatedTournaments")
+  createdTournaments     Tournament[] @relation("UserCreatedTournaments")
   organizerIn            TournamentOrganizer[]
   tournamentJoinRequests TournamentJoinRequest[]
   tournamentParticipants TournamentParticipant[]
+  registrations          TournamentRegistration[]
 }
+
 
 model PlayerProfile {
   id     Int  @id @default(autoincrement())
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   location          String?
   gender            Gender?
@@ -106,45 +128,55 @@ model PlayerProfile {
 }
 
 model PlayerGame {
-  id             Int           @id @default(autoincrement())
-  profile        PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  profileId      Int
-  game           Game
-  customName     String?
-  playerIdOnGame String?
-  public         Boolean       @default(true)
+  id        Int @id @default(autoincrement())
+  profileId Int
+  gameId    Int
 
-  @@unique([profileId, game])
+  profile PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  game    Game          @relation(fields: [gameId], references: [id])
+
+  inGameName String?
+  playerTag  String?
+  isPublic   Boolean @default(true)
+
+  @@unique([profileId, gameId])
 }
 
+
 model SocialLink {
-  id        Int            @id @default(autoincrement())
-  profile   PlayerProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  id        Int @id @default(autoincrement())
   profileId Int
   provider  SocialProvider
   url       String
   label     String?
-  createdAt DateTime       @default(now())
+
+  profile PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, provider, url])
 }
 
 model Achievement {
-  id          Int           @id @default(autoincrement())
-  profile     PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  profileId   Int
+  id        Int @id @default(autoincrement())
+  profileId Int
+
+  profile PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
   title       String
-  description String?       @db.Text
+  description String? @db.Text
   achievedAt  DateTime?
   proofUrl    String?
-  createdAt   DateTime      @default(now())
+
+  createdAt DateTime @default(now())
 }
+
 
 model Team {
   id Int @id @default(autoincrement())
 
-  name    String  @unique
-  game    Game
+  name   String @unique
+  gameId Int
+  game   Game   @relation(fields: [gameId], references: [id])
+
   tagline String?
   region  String?
 
@@ -167,14 +199,13 @@ model Team {
 model TeamMember {
   id Int @id @default(autoincrement())
 
-  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
   teamId Int
-
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId Int
 
-  role TeamRole @default(MEMBER)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  role TeamRole @default(MEMBER)
   joinedAt DateTime @default(now())
 
   @@unique([teamId, userId])
@@ -183,14 +214,14 @@ model TeamMember {
 model TeamJoinRequest {
   id Int @id @default(autoincrement())
 
-  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
   teamId Int
-
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId Int
 
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   message String?
-  status  String  @default("PENDING") // PENDING | ACCEPTED | REJECTED
+  status  RequestStatus @default(PENDING)
 
   createdAt DateTime @default(now())
 
@@ -198,31 +229,40 @@ model TeamJoinRequest {
 }
 
 model TeamMessage {
-  id        Int      @id @default(autoincrement())
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  teamId    Int
-  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  senderId  Int
-  content   String   @db.Text
+  id Int @id @default(autoincrement())
+
+  teamId   Int
+  senderId Int
+
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  content   String @db.Text
   createdAt DateTime @default(now())
 
   @@index([teamId, createdAt])
 }
 
+
 model Tournament {
-  id        Int       @id @default(autoincrement())
+  id Int @id @default(autoincrement())
+
   name      String
   tagline   String?
   bannerUrl String?
+
   venueType VenueType
   location  String?
+
   startDate DateTime
   endDate   DateTime
+
+  shareSlug String? @unique
 
   createdBy Int
   creator   User @relation("UserCreatedTournaments", fields: [createdBy], references: [id])
 
-  status TournamentStatus @default(PUBLISHED)
+  status TournamentStatus @default(DRAFT)
 
   feeType   FeeType
   feeAmount Int?
@@ -230,58 +270,104 @@ model Tournament {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  games        TournamentGame[]
-  requirements TournamentRequirement[]
-  organizers   TournamentOrganizer[]
-  participants TournamentParticipant[]
-  joinRequests TournamentJoinRequest[]
+  games         TournamentGame[]
+  requirements  TournamentRequirement[]
+  organizers    TournamentOrganizer[]
+  participants  TournamentParticipant[]
+  joinRequests  TournamentJoinRequest[]
+  formFields    TournamentFormField[]
+  registrations TournamentRegistration[]
 }
 
 model TournamentGame {
-  id           Int        @id @default(autoincrement())
-  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  id           Int @id @default(autoincrement())
   tournamentId Int
-  game         Game
+  gameId       Int
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  game       Game       @relation(fields: [gameId], references: [id])
+
+  @@unique([tournamentId, gameId])
 }
 
 model TournamentRequirement {
-  id           Int        @id @default(autoincrement())
-  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  id           Int @id @default(autoincrement())
   tournamentId Int
-  text         String
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  text String
 }
 
 model TournamentOrganizer {
-  id Int @id @default(autoincrement())
-
-  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  id           Int @id @default(autoincrement())
   tournamentId Int
+  userId       Int
 
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId Int
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
 }
 
 model TournamentJoinRequest {
-  id           Int        @id @default(autoincrement())
-  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  id           Int @id @default(autoincrement())
   tournamentId Int
+  userId       Int
 
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId Int
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   message   String?
-  status    String   @default("PENDING")
+  status    RequestStatus @default(PENDING)
   createdAt DateTime @default(now())
+
+  @@unique([tournamentId, userId])
 }
 
 model TournamentParticipant {
-  id Int @id @default(autoincrement())
-
-  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  id           Int @id @default(autoincrement())
   tournamentId Int
+  userId       Int
 
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId Int
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   joinedAt DateTime @default(now())
+
+  @@unique([tournamentId, userId])
+}
+
+model TournamentFormField {
+  id           Int @id @default(autoincrement())
+  tournamentId Int
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  label         String
+  fieldType     FormFieldType
+  required      Boolean @default(true)
+  allowMultiple Boolean @default(false)
+  defaultValue  String?
+  paymentMeta   Json?
+
+  createdAt DateTime @default(now())
+}
+
+model TournamentRegistration {
+  id           Int @id @default(autoincrement())
+  tournamentId Int
+  userId       Int
+  gameId       Int
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game       Game       @relation(fields: [gameId], references: [id])
+
+  responses   Json
+  paymentInfo Json?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tournamentId, userId, gameId])
 }

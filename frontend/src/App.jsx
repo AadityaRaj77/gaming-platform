@@ -7,6 +7,9 @@ import PlayerProfile from "./pages/PlayerProfile";
 import NotificationsSocket from "./NotificationsSocket";
 import TournamentCreate from "./pages/TournamentCreate";
 import TournamentDashboard from "./pages/TournamentDashboard";
+import TournamentList from "./pages/TournamentList";
+import TournamentRegister from "./pages/TournamentRegister";
+import TournamentFormBuilder from "./pages/TournamentFormBuilder";
 
 const isAuth = () => !!localStorage.getItem("token");
 
@@ -53,17 +56,12 @@ export default function App() {
     </PrivateRoute>
   }
 />
-
-<Route
-  path="/tournaments/:id"
-  element={
-    <PrivateRoute>
-      <TournamentDashboard />
-    </PrivateRoute>
-  }
-/>
-
-      </Routes>
+<Route path="/tournaments/create" element={<TournamentCreate />} />
+<Route path="/tournaments/:id" element={<TournamentDashboard />} />
+<Route path="/tournaments/:id/form-builder" element={<TournamentFormBuilder />} />
+<Route path="/tournaments/:id/register/:slug" element={<TournamentRegister />} />
+<Route path="/tournaments" element={<TournamentList />} />
+</Routes>
     </>
   );
 }
