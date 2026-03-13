@@ -1,4 +1,4 @@
-import { prisma } from "../config/db.js";
+import { prisma } from "../db/prisma.js";
 
 /* ================= GET MY PROFILE ================= */
 
@@ -171,13 +171,13 @@ export const searchProfiles = async (req, res) => {
         ...whereProfile,
         games: gameId
           ? {
-              some: { gameId: Number(gameId) }
-            }
+            some: { gameId: Number(gameId) }
+          }
           : undefined,
         user: username
           ? {
-              username: { contains: username, mode: "insensitive" }
-            }
+            username: { contains: username, mode: "insensitive" }
+          }
           : undefined
       },
       include: {

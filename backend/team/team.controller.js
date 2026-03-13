@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import { prisma } from "../config/db.js";
+import { prisma } from "../db/prisma.js";
 import { emitToUser } from "../socketBus.js";
 import { emitToTeam } from "../socketBus.js";
 

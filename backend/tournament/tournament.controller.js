@@ -1,4 +1,4 @@
-import { prisma } from "../config/db.js";
+import { prisma } from "../db/prisma.js";
 import crypto from "crypto";
 
 export const createTournament = async (req, res) => {
@@ -16,7 +16,7 @@ export const createTournament = async (req, res) => {
       games,
       requirements,
       bannerUrl,
-      organizers, 
+      organizers,
     } = req.body;
 
     // Create tournament
@@ -190,7 +190,7 @@ export const saveRegistrationForm = async (req, res) => {
   try {
     const tournamentId = Number(req.params.id);
     const userId = req.user.userId;
-    const { fields } = req.body; 
+    const { fields } = req.body;
     // fields = [{ label, fieldType, required, allowMultiple, defaultValue, paymentMeta }]
 
     const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });

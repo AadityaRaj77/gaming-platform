@@ -7,7 +7,6 @@ generator client {
   provider = "prisma-client-js"
 }
 
-
 enum TeamRole {
   LEADER
   MEMBER
@@ -62,22 +61,25 @@ enum RequestStatus {
   REJECTED
 }
 
+enum ChatRoomType {
+  TEAM
+  TOURNAMENT
+  DIRECT
+}
 
 model Game {
   id        Int     @id @default(autoincrement())
-  slug      String  @unique   // "valorant", "tekken-7", "smash-karts"
-  name      String           // Display name
-  iconUrl  String?
+  slug      String  @unique
+  name      String
+  iconUrl   String?
   isActive  Boolean @default(true)
-
   createdAt DateTime @default(now())
 
-  teams                 Team[]
-  tournamentGames       TournamentGame[]
-  registrations         TournamentRegistration[]
-  playerGames           PlayerGame[]
+  teams           Team[]
+  tournamentGames TournamentGame[]
+  registrations   TournamentRegistration[]
+  playerGames     PlayerGame[]
 }
-
 
 model User {
   id           Int      @id @default(autoincrement())
@@ -90,22 +92,21 @@ model User {
 
   profile PlayerProfile?
 
-  createdTeams    Team[]       @relation("CaptainTeams")
   teamMemberships TeamMember[]
   teamJoinRequests TeamJoinRequest[]
-  sentMessages    TeamMessage[]
 
   createdTournaments     Tournament[] @relation("UserCreatedTournaments")
   organizerIn            TournamentOrganizer[]
-  tournamentJoinRequests TournamentJoinRequest[]
-  tournamentParticipants TournamentParticipant[]
-  registrations          TournamentRegistration[]
-}
+  tournamentParticipants TournamentRegistration[]
 
+  chatRooms   ChatMember[]
+  messages    ChatMessage[]
+}
 
 model PlayerProfile {
   id     Int  @id @default(autoincrement())
   userId Int  @unique
+
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   location          String?
@@ -114,8 +115,10 @@ model PlayerProfile {
   about             String? @db.Text
   hoursPerWeek      Int?
   lookingForTeam    Boolean @default(false)
+
   availabilityStart String?
   availabilityEnd   String?
+
   isProfileComplete Boolean @default(false)
   visibility        String  @default("PUBLIC")
 
@@ -140,8 +143,8 @@ model PlayerGame {
   isPublic   Boolean @default(true)
 
   @@unique([profileId, gameId])
+  @@index([gameId])
 }
-
 
 model SocialLink {
   id        Int @id @default(autoincrement())
@@ -152,7 +155,7 @@ model SocialLink {
 
   profile PlayerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  @@unique([profileId, provider, url])
+  @@unique([profileId, provider])
 }
 
 model Achievement {
@@ -169,31 +172,26 @@ model Achievement {
   createdAt DateTime @default(now())
 }
 
-
 model Team {
   id Int @id @default(autoincrement())
 
   name   String @unique
   gameId Int
-  game   Game   @relation(fields: [gameId], references: [id])
+
+  game Game @relation(fields: [gameId], references: [id])
 
   tagline String?
   region  String?
-
-  teamCode     String @unique
-  passwordHash String
-
-  leaderId Int
-  leader   User @relation("CaptainTeams", fields: [leaderId], references: [id])
 
   maxMembers Int @default(5)
 
   members      TeamMember[]
   joinRequests TeamJoinRequest[]
-  messages     TeamMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([gameId])
 }
 
 model TeamMember {
@@ -209,6 +207,7 @@ model TeamMember {
   joinedAt DateTime @default(now())
 
   @@unique([teamId, userId])
+  @@index([userId])
 }
 
 model TeamJoinRequest {
@@ -227,22 +226,6 @@ model TeamJoinRequest {
 
   @@unique([teamId, userId])
 }
-
-model TeamMessage {
-  id Int @id @default(autoincrement())
-
-  teamId   Int
-  senderId Int
-
-  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
-
-  content   String @db.Text
-  createdAt DateTime @default(now())
-
-  @@index([teamId, createdAt])
-}
-
 
 model Tournament {
   id Int @id @default(autoincrement())
@@ -273,10 +256,10 @@ model Tournament {
   games         TournamentGame[]
   requirements  TournamentRequirement[]
   organizers    TournamentOrganizer[]
-  participants  TournamentParticipant[]
-  joinRequests  TournamentJoinRequest[]
+  participants  TournamentRegistration[]
   formFields    TournamentFormField[]
-  registrations TournamentRegistration[]
+
+  @@index([createdBy])
 }
 
 model TournamentGame {
@@ -306,34 +289,6 @@ model TournamentOrganizer {
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([tournamentId, userId])
-}
-
-model TournamentJoinRequest {
-  id           Int @id @default(autoincrement())
-  tournamentId Int
-  userId       Int
-
-  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  message   String?
-  status    RequestStatus @default(PENDING)
-  createdAt DateTime @default(now())
-
-  @@unique([tournamentId, userId])
-}
-
-model TournamentParticipant {
-  id           Int @id @default(autoincrement())
-  tournamentId Int
-  userId       Int
-
-  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  joinedAt DateTime @default(now())
 
   @@unique([tournamentId, userId])
 }
@@ -370,4 +325,49 @@ model TournamentRegistration {
   createdAt DateTime @default(now())
 
   @@unique([tournamentId, userId, gameId])
+  @@index([tournamentId])
+  @@index([userId])
+}
+
+model ChatRoom {
+  id Int @id @default(autoincrement())
+
+  type ChatRoomType
+
+  teamId       Int?
+  tournamentId Int?
+
+  members ChatMember[]
+  messages ChatMessage[]
+
+  createdAt DateTime @default(now())
+}
+
+model ChatMember {
+  id Int @id @default(autoincrement())
+
+  roomId Int
+  userId Int
+
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  joinedAt DateTime @default(now())
+
+  @@unique([roomId, userId])
+}
+
+model ChatMessage {
+  id Int @id @default(autoincrement())
+
+  roomId   Int
+  senderId Int
+
+  room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  content   String @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([roomId, createdAt])
 }

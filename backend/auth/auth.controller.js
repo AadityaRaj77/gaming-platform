@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { prisma } from "../config/db.js";
+import { prisma } from "../db/prisma.js";
 import jwt from "jsonwebtoken";
 import { ENV } from "../config/env.js";
 
