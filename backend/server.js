@@ -14,20 +14,22 @@ import tournamentRoutes from "./tournament/tournament.routes.js";
 const app = express();
 const server = http.createServer(app);
 
+const corsOptions = {
+  origin: ENV.FRONTEND_URL,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+};
+
 const io = new SocketIOServer(server, {
-  cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
-  }
+  cors: corsOptions
 });
+
+app.use(cors(corsOptions));
+app.use(express.json({ limit: "1mb" }));
 
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
-
-app.use(cors());
-app.use(express.json());
 
 // REST routes
 app.use("/api/auth", authRoutes);
@@ -44,7 +46,7 @@ app.get("/api/health", (req, res) => {
 const teamChatNsp = io.of("/team-chat");
 registerTeamChatNamespace(teamChatNsp);
 
-const PORT = ENV.PORT || 4000;
+const PORT = ENV.PORT;
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
